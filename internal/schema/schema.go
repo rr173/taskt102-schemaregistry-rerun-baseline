@@ -85,6 +85,13 @@ func Parse(raw []byte) (*Schema, error) {
 	if err := dec.Decode(&rs); err != nil {
 		return nil, fmt.Errorf("契约定义不是合法 JSON: %w", err)
 	}
+	// A schema definition must be exactly one JSON value. json.Decoder.Decode
+	// stops after the first value and silently ignores any trailing data, so
+	// reject explicitly: two consecutive JSON values must not be accepted by
+	// taking only the first.
+	if dec.More() {
+		return nil, fmt.Errorf("契约定义包含尾随 JSON 数据")
+	}
 	if rs.Fields == nil {
 		return nil, fmt.Errorf("契约定义缺少 fields 字段")
 	}
@@ -192,12 +199,16 @@ func normalizeDefault(t FieldType, raw json.RawMessage) (json.RawMessage, error)
 
 // decodeValue decodes raw JSON using json.Number so number subtypes are
 // distinguishable. Object and array values are rejected as invalid scalars.
+// A single value is required: trailing JSON data is rejected.
 func decodeValue(raw json.RawMessage) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var v interface{}
 	if err := dec.Decode(&v); err != nil {
 		return nil, err
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("值包含尾随 JSON 数据")
 	}
 	switch v.(type) {
 	case json.Number, string, bool, nil:
