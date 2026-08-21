@@ -11,7 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
+	"math/big"
 	"regexp"
 	"sort"
 )
@@ -159,11 +159,11 @@ func normalizeDefault(t FieldType, raw json.RawMessage) (json.RawMessage, error)
 		if !ok {
 			return nil, fmt.Errorf("期望整数")
 		}
-		i, ok := exactInteger(n)
+		canonical, ok := canonicalInteger(n)
 		if !ok {
-			return nil, fmt.Errorf("期望整数，得到小数或超出 int64 范围")
+			return nil, fmt.Errorf("期望整数，得到小数或超出整数范围")
 		}
-		return json.Marshal(i)
+		return json.RawMessage(canonical), nil
 	case TypeNumber:
 		n, ok := v.(json.Number)
 		if !ok {
@@ -297,8 +297,7 @@ func matchType(t FieldType, v interface{}) bool {
 		if !ok {
 			return false
 		}
-		_, ok = exactInteger(n)
-		return ok
+		return exactInteger(n)
 	case TypeNumber:
 		_, ok := v.(json.Number)
 		return ok
@@ -312,14 +311,30 @@ func matchType(t FieldType, v interface{}) bool {
 	return false
 }
 
-// exactInteger converts a JSON number to int64 without passing through
-// float64, which would lose precision for values above 2^53.
-func exactInteger(n json.Number) (int64, bool) {
-	f, err := n.Float64()
-	if err != nil || math.IsInf(f, 0) || math.Trunc(f) != f {
-		return 0, false
+// exactInteger reports whether a JSON number is an integer (no fractional
+// part). It parses with arbitrary precision so values outside the IEEE-754
+// double range — notably above JavaScript's Number.MAX_SAFE_INTEGER (2^53-1)
+// — still round-trip without losing their exact decimal value.
+func exactInteger(n json.Number) bool {
+	r, ok := new(big.Rat).SetString(string(n))
+	if !ok {
+		return false
 	}
-	return int64(f), true
+	return r.IsInt()
+}
+
+// canonicalInteger returns the canonical JSON text of an integer default. It
+// parses the JSON number at full precision and re-emits it as a plain integer
+// literal, preserving the exact value even when it exceeds the JavaScript safe
+// integer range (2^53-1). Non-integers or unparseable values are rejected.
+func canonicalInteger(n json.Number) (string, bool) {
+	r, ok := new(big.Rat).SetString(string(n))
+	if !ok || !r.IsInt() {
+		return "", false
+	}
+	// The denominator of an integer Rat is always 1, so the numerator is the
+	// exact value. Text() yields the minimal, sign-prefixed decimal form.
+	return r.Num().Text(10), true
 }
 
 func typeReason(t FieldType) string {
