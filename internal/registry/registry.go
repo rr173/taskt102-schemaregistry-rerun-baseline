@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -624,8 +625,7 @@ func (r *Registry) LookupVersion(subject, v string) (int, error) {
 		}
 		return latest, nil
 	}
-	var n int
-	_, err := fmt.Sscanf(v, "%d", &n)
+	n, err := strconv.Atoi(v)
 	if err != nil || n <= 0 {
 		return 0, fmt.Errorf("非法版本号 %q", v)
 	}
