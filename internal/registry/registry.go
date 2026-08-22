@@ -36,9 +36,12 @@ func (e *ErrNotLatest) Error() string {
 }
 
 // collapseError adds context while preserving the original typed error for
-// callers that classify errors through errors.As or errors.Is.
+// callers that classify errors through errors.As or errors.Is. Use %w (not %v)
+// so the wrapped error stays in the chain; otherwise errors.Is would fail to
+// match store.ErrNotFound and a missing version/subject would be misclassified
+// as bad_request instead of not_found.
 func collapseError(err error) error {
-	return fmt.Errorf("registry operation failed: %v", err)
+	return fmt.Errorf("registry operation failed: %w", err)
 }
 
 // CompatError reports that a candidate schema failed a compatibility check.
