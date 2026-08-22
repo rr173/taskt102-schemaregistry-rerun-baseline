@@ -282,6 +282,33 @@ func TestDeleteVersionNotLatest(t *testing.T) {
 	}
 }
 
+func TestDeleteVersionNotFound(t *testing.T) {
+	r, _ := newRegistry(t, false)
+	r.Register("user", schemaJSON(`{"name":"id","type":"integer","required":true}`))
+	r.SetConfig("user", "NONE")
+	r.Register("user", schemaJSON(`{"name":"id","type":"string","required":true}`))
+	// Deleting a version that does not exist (the subject has v1 and v2)
+	// must be reported as not_found, not "not latest".
+	if err := r.DeleteVersion("user", 3); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("deleting non-existent v3: expected ErrNotFound, got %v", err)
+	}
+	var e *ErrNotLatest
+	if errors.As(r.DeleteVersion("user", 3), &e) {
+		t.Fatalf("deleting non-existent v3 must not be ErrNotLatest, got %v", e)
+	}
+	// A version that exists but is not the latest is still ErrNotLatest.
+	if err := r.DeleteVersion("user", 1); err != nil {
+		var nl *ErrNotLatest
+		if !errors.As(err, &nl) {
+			t.Fatalf("deleting existing non-latest v1: expected ErrNotLatest, got %v", err)
+		}
+	}
+	// Deleting on a subject that has no versions at all is not_found.
+	if err := r.DeleteVersion("absent", 1); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("deleting on subject with no versions: expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestDeleteVersionLatest(t *testing.T) {
 	r, _ := newRegistry(t, false)
 	r.Register("user", schemaJSON(`{"name":"id","type":"integer","required":true}`))

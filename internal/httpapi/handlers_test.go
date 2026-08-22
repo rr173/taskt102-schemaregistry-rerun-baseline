@@ -174,3 +174,29 @@ func TestDeleteVersionNotLatest(t *testing.T) {
 		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
 	}
 }
+
+func TestDeleteVersionNotFound(t *testing.T) {
+	mux, _ := newTestMux(t)
+	do(t, mux, "POST", "/subjects/user/versions",
+		map[string]interface{}{"fields": []map[string]interface{}{
+			{"name": "id", "type": "integer", "required": true},
+		}})
+	do(t, mux, "PUT", "/config/user", map[string]interface{}{"compatibility": "NONE"})
+	do(t, mux, "POST", "/subjects/user/versions",
+		map[string]interface{}{"fields": []map[string]interface{}{
+			{"name": "id", "type": "string", "required": true},
+		}})
+	// The subject has versions 1 and 2; v3 does not exist. Deleting a
+	// non-existent version must be 404 not_found, not 400 not_latest.
+	w := do(t, mux, "DELETE", "/subjects/user/versions/3", nil)
+	if w.Code != 404 {
+		t.Fatalf("expected 404 for non-existent version, got %d body=%s", w.Code, w.Body.String())
+	}
+	var eb errBody
+	if err := json.Unmarshal(w.Body.Bytes(), &eb); err != nil {
+		t.Fatal(err)
+	}
+	if eb.Error.Code != "not_found" {
+		t.Fatalf("expected error code not_found, got %q body=%s", eb.Error.Code, w.Body.String())
+	}
+}
